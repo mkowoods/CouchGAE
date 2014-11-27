@@ -47,6 +47,9 @@ class MissingEssentialFieldException(Exception):
 class KeyAlreadyExistsError(Exception):
     pass
 
+class KeyNotFoundError(Exception):
+    pass
+
 
 #Model
 class KeyValueStore(db.Model):
@@ -74,6 +77,9 @@ class DevStore(KeyValueStore):
 DB_TO_MODEL_MAP = {'dbstore1': DBStore1,
                    'dev': DevStore}
 
+
+
+
 class APIController():
 
     def __init__(self, action, db, rec_class = "", key = "", val = ""):
@@ -93,15 +99,18 @@ class APIController():
             raise CreateWithoutValException
 
         #TODO: Need to add a look up to see if the key already exists
-        
+
         if self.db.get_by_key_name(self.key):
             raise KeyAlreadyExistsError
         rec = self.db(key_name = self.key, rec_class = self.rec_class, store_key = self.key, store_val = self.val)
         put = db.put(rec)
-        return put
+        return put.id_or_name()
 
     def read(self):
-        pass
+        rec = self.db.get_by_key_name(key_names = self.key)
+        if not rec:
+            raise KeyNotFoundError
+        return rec
 
     def update(self):
         pass
@@ -114,6 +123,10 @@ class APIController():
 
         if self.action == "create":
             return self.create()
+
+        elif self.action == "read":
+            rec = self.read()
+            return rec.store_key+'|'+rec.store_val
 
 
 #View
