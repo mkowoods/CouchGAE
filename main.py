@@ -78,15 +78,19 @@ DB_TO_MODEL_MAP = {'dbstore1': DBStore1,
                    'dev': DevStore}
 
 
-
-
 class APIController():
 
-    def __init__(self, action, db, rec_class = "", key = "", val = ""):
+    def __init__(self, action, db, rec_class = "", key = "", val = "", offset = ""):
         self.key = key
         self.rec_class = rec_class
         self.action = action
         self.val = val
+
+        #TODO: Figure out a better way to handle this exception
+        try:
+            self.offset = int(offset)
+        except:
+            self.offset = 0
 
         if db in DB_TO_MODEL_MAP:
             self.db = DB_TO_MODEL_MAP[db]
@@ -112,6 +116,15 @@ class APIController():
             raise KeyNotFoundError
         return rec
 
+    def read_rec_class(self, offset = None):
+        q = db.Query(self.db)
+        q.filter('rec_class =', self.rec_class)
+        limit = 25
+
+        results = q.fetch(limit = limit, offset = self.offset)
+        for r in results:
+            logging.info(r.store_key+'|'+r.store_val)
+
     def update(self):
         pass
 
@@ -127,6 +140,9 @@ class APIController():
         elif self.action == "read":
             rec = self.read()
             return rec.store_key+'|'+rec.store_val
+
+        elif self.action == "read_rec_class":
+            self.read_rec_class()
 
 
 #View
@@ -144,12 +160,13 @@ class APIHandler(webapp2.RequestHandler):
         rec_class = self.request.get('rec_class')
         key = self.request.get('store_key')
         val = self.request.get('store_val')
+        offset = self.request.get('offset')
 
         #if one of the critical fields is missing then it should bypass the call to the API Controller
-        if action == "" or db == "" or key == "":
+        if action == "" or db == "":
             self.response.write(MissingEssentialFieldException.api_response)
 
-        API =  APIController(action, db, rec_class, key, val)
+        API =  APIController(action, db, rec_class, key, val, offset)
 
         try:
             api_response = API.run_action()
