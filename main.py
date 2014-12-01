@@ -23,10 +23,16 @@ import json
 import time
 from google.appengine.ext import db
 
+
+
+
 TEMPLATE_DIR = os.path.join(os.path.dirname(__file__), 'templates')
 TEMPLATES = jinja2.Environment(loader=jinja2.FileSystemLoader(TEMPLATE_DIR),
                                extensions=['jinja2.ext.autoescape'],
                                autoescape=True)
+
+SUPPORTED_ACTIONS = ["read", "create", "update", "delete"]
+
 
 
 # Errors
@@ -43,7 +49,7 @@ class CreateWithoutValException(Exception):
 
 class MissingEssentialFieldException(Exception):
     api_response = {"status": "error",
-                    "message": "Missing a Critical Field (action, db, key...)"}
+                    "message": "Missing a Critical Field (action, db, key, table...)"}
 
 
 class KeyAlreadyExistsError(Exception):
@@ -64,17 +70,19 @@ class KeyValueStore(db.Model):
     """
 
     create_date = db.DateTimeProperty(auto_now_add=True)
-    epoch_time = db.StringProperty()
-    rec_class = db.StringProperty(required=True)
+    create_epoch = db.IntegerProperty(required=True)
+    last_update_date = db.DateTimeProperty(auto_now_add=True)
+    last_update_epoch = db.IntegerProperty(required=True)
+    api_key = db.StringProperty(required=True)
+    table = db.StringProperty(required=True)
     store_key = db.StringProperty(required=True)
     store_val = db.StringProperty(required=True)
-
 
     def json_response(self):
         response = {
             'status': 'OK',
             'created_date': str(self.create_date),
-            'rec_class': self.rec_class,
+            'table': self.table,
             'key': self.store_key,
             'epoch_time': self.epoch_time,
             'value': self.store_val
@@ -91,18 +99,26 @@ class DevStore(KeyValueStore):
     """Key Value Store for """
     pass
 
-
-#Controller
 DB_TO_MODEL_MAP = {'dbstore1': DBStore1,
                    'dev': DevStore}
 
 
+#Controller
+
+#TODO Need to define class to generate unique API Keys. Probably need to create a separate Database to store this data
+class GenerateAPIKeys(object):
+    pass
+
+
 class APIController():
-    def __init__(self, action, db, rec_class="", key="", val="", offset=""):
+
+    def __init__(self, action, db, api_key, table, key, val, limit, offset):
+
         self.key = key
-        self.rec_class = rec_class
+        self.table = table
         self.action = action
         self.val = val
+        self.api_key = api_key
 
         #TODO: Figure out a better way to handle this exception
         try:
@@ -110,50 +126,83 @@ class APIController():
         except ValueError:
             self.offset = 0
 
+        try:
+            self.limit = int(limit)
+        except ValueError:
+            self.limit = 25
+
         if db in DB_TO_MODEL_MAP:
             self.db = DB_TO_MODEL_MAP[db]
         else:
             raise DBNotFoundException()
 
+    def get_key_name(self):
+        return '|'.join([self.api_key, self.table, self.key])
+
+    def get_rec_by_key_name(self):
+
+        rec = self.db.get_by_key_name(key_names=self.get_key_name())
+        if not rec:
+            raise KeyNotFoundError
+        return rec
+
+    @staticmethod
+    def get_current_epoch_time():
+        return int(time.time()*10000)
+
     def create(self):
         if self.val == "":
             raise CreateWithoutValException
 
-        #TODO: Need to add a look up to see if the key already exists
-
-        if self.db.get_by_key_name(self.key):
+        if self.db.get_by_key_name(key_names=self.get_key_name()):
             raise KeyAlreadyExistsError
 
-        time_stamp = str(int(time.time()*10000))
+        time_stamp = self.get_current_epoch_time()
 
-        rec = self.db(key_name=self.key,
-                      epoch_time = time_stamp,
-                      rec_class=self.rec_class,
+        rec = self.db(key_name=self.get_key_name(),
+                      api_key=self.api_key,
+                      epoch_time=time_stamp,
+                      table=self.table,
                       store_key=self.key,
                       store_val=self.val)
+        #TODO Need to handler in case put fails
         put = db.put(rec)
         return put.id_or_name()
 
     def read(self):
-        rec = self.db.get_by_key_name(key_names=self.key)
-        if not rec:
-            raise KeyNotFoundError
-        return rec.json_response()
 
-    def read_rec_class(self, offset=None):
-        q = db.Query(self.db)
-        q.filter('rec_class =', self.rec_class)
-        limit = 25
+        if self.key:
+            rec = self.get_rec_by_key_name()
+            return rec.json_response()
 
-        results = q.fetch(limit=limit, offset=self.offset)
+        elif self.table:
+            q = db.Query(self.db)
+            q.filter('table =', self.table)
 
-        return [r.json_response() for r in results]
+            results = q.fetch(limit=self.limit, offset=self.offset)
+
+            return [r.json_response() for r in results]
+
+        else:
+            raise MissingEssentialFieldException
 
     def update(self):
-        pass
+
+        if self.val == "":
+            raise CreateWithoutValException
+
+        if self.key:
+            rec = self.get_rec_by_key_name()
+            rec.store_val = self.val
+            rec.last_update_epoch = self.get_current_epoch_time()
+            return rec.json_response()
+
+        else:
+            raise MissingEssentialFieldException
 
     def delete(self):
-        pass
+        rec = self.get_rec_by_key_name()
+        return db.delete(rec)
 
     def run_action(self):
 
@@ -163,31 +212,40 @@ class APIController():
         elif self.action == "read":
             return self.read()
 
-        elif self.action == "read_rec_class":
-            return self.read_rec_class()
 
 
 #View
+
 class MainHandler(webapp2.RequestHandler):
     def get(self):
+        logging.info(self.request.host)
         template = TEMPLATES.get_template('index.html')
         self.response.write(template.render())
+
+
+
 
 
 class APIHandler(webapp2.RequestHandler):
     def get(self):
         action = self.request.get('action')
         db = self.request.get('db')
-        rec_class = self.request.get('rec_class')
+        api_key = self.request.get('api_key')
+        table = self.request.get('table')
         key = self.request.get('store_key')
         val = self.request.get('store_val')
         offset = self.request.get('offset')
+        limit = self.request.get('limit')
 
         #if one of the critical fields is missing then it should bypass the call to the API Controller
-        if action == "" or db == "":
+        if action not in SUPPORTED_ACTIONS or db == "":
             self.response.write(MissingEssentialFieldException.api_response)
 
-        API = APIController(action, db, rec_class, key, val, offset)
+
+        API = APIController(action=action, db=db,
+                            table=table, key=key,
+                            val=val, offset=offset,
+                            limit=limit, api_key=api_key)
 
         try:
             api_response = API.run_action()
