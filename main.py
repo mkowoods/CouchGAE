@@ -82,9 +82,12 @@ class KeyValueStore(db.Model):
         response = {
             'status': 'OK',
             'created_date': str(self.create_date),
+            'create_epoch': self.create_epoch,
+            'last_update_date': str(self.last_update_date),
+            'last_update_epoch': self.last_update_epoch,
+            'api_key': self.api_key,
             'table': self.table,
             'key': self.store_key,
-            'epoch_time': self.epoch_time,
             'value': self.store_val
         }
         return response
@@ -161,7 +164,8 @@ class APIController():
 
         rec = self.db(key_name=self.get_key_name(),
                       api_key=self.api_key,
-                      epoch_time=time_stamp,
+                      create_epoch=time_stamp,
+                      last_update_epoch = time_stamp,
                       table=self.table,
                       store_key=self.key,
                       store_val=self.val)
@@ -211,6 +215,12 @@ class APIController():
 
         elif self.action == "read":
             return self.read()
+
+        elif self.action == "delete":
+            return self.delete()
+
+        elif self.action == "update":
+            return self.update()
 
 
 
