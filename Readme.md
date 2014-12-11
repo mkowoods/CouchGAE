@@ -1,3 +1,16 @@
+##What is Couch GAE?
 
-Below is a sample URL
-http://localhost:8080/api?action=create&db=dev&rec_class=users&store_key=mwoods&store_val=sample
+CouchGAE(started as mw-key-val-dev) started as a side project to create a free easy to use datastore that is platform agnostic.
+It's http based 
+
+##What it is not?
+This is not recommended as a production Database in the cloud for that you can check out RDS or Google SQL/Big Table  
+
+##How to set it up?
+
+##How Should you Use it?
+
+
+
+##What areas of further development are there?
+
