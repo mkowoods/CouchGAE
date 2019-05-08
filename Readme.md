@@ -1,16 +1,8 @@
-##What is Couch GAE?
+## What is Couch GAE?
 
 CouchGAE(started as mw-key-val-dev) started as a side project to create a free easy to use datastore that is platform agnostic.
 It's http based 
 
-##What it is not?
+## What it is not?
 This is not recommended as a production Database in the cloud for that you can check out RDS or Google SQL/Big Table  
-
-##How to set it up?
-
-##How Should you Use it?
-
-
-
-##What areas of further development are there?
 
